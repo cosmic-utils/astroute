@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.astroute.Astroute</id>
+  <name>Astroute</name>
+  <summary>Control each application's network access and interface</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <developer id="io.github.astroute"><name>Astroute contributors</name></developer>
+  <description>
+    <p>A native COSMIC application for monitoring connections, controlling network access,
+    and routing applications through Wi-Fi, Ethernet, or a VPN interface.</p>
+    <p>Network controls use a separately authenticated helper. Applications run as your user.</p>
+  </description>
+  <launchable type="desktop-id">io.github.astroute.Astroute.desktop</launchable>
+  <provides><binary>astroute</binary></provides>
+  <categories><category>System</category><category>Network</category></categories>
+  <content_rating type="oars-1.1"/>
+  <releases><release version="0.1.0" date="2026-11-07"/></releases>
+</component>

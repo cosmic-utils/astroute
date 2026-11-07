@@ -1,0 +1,60 @@
+name: Release
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  packages:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check release version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
+          [[ "$GITHUB_REF_NAME" == "v$version" ]]
+      - name: Build portable binaries and native packages
+        shell: bash
+        run: |
+          docker build -f packaging/Containerfile -t astroute-builder .
+          docker run --rm -v "$PWD:/source" -e CARGO_TARGET_DIR=/source/target/distribution \
+            -e SOURCE_DATE_EPOCH="$(git show -s --format=%ct)" astroute-builder bash -euc '
+              cargo build --release --workspace --locked
+              packaging/package.sh deb target/distribution/release
+              packaging/package.sh rpm target/distribution/release
+            '
+          docker run --rm -v "$PWD:/source" -w /source -e BUILDER_UID="$(id -u)" archlinux:base-devel bash -euc '
+            useradd -m -u "$BUILDER_UID" packager
+            chown -R packager:packager /source/dist
+            runuser -u packager -- packaging/package.sh arch
+          '
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          cp install.sh dist/install.sh
+          cd dist
+          sha256sum *.deb *.rpm *.pkg.tar.zst *.tar.gz install.sh > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: astroute-packages
+          path: dist/*
+          if-no-files-found: error
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --verify-tag \
+              --title "Astroute ${GITHUB_REF_NAME#v}" --notes-file packaging/RELEASE_NOTES.md dist/*
+          fi

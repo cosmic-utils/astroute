@@ -1,0 +1,11 @@
+/target/
+__pycache__/
+*.pyc
+/dist/
+/artifacts/
+AGENTS.md
+**/AGENTS.md
+.agents/
+.agent/
+
+/docs/architecture.md

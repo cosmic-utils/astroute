@@ -1,0 +1,35 @@
+Name: astroute
+Version: @VERSION@
+Release: 1
+Summary: Per-application network controls for COSMIC
+License: GPL-3.0-only
+URL: https://github.com/cosmic-utils/astroute
+Source0: astroute-@VERSION@-linux-x86_64.tar.gz
+ExclusiveArch: x86_64
+Requires: nftables, iproute, polkit, ca-certificates
+Requires: /usr/bin/pkexec
+Requires: libxkbcommon, wayland, libglvnd-egl, libglvnd-glx, fontconfig, libinput, systemd-libs
+%global debug_package %{nil}
+%global __os_install_post %{nil}
+
+%description
+Choose network access, interfaces and SOCKS5 or HTTP(S) proxies for native desktop apps.
+
+%prep
+%setup -q -c
+
+%build
+
+%install
+mkdir -p %{buildroot}
+cp -a usr %{buildroot}/
+
+%files
+/usr/bin/astroute
+/usr/libexec/astroute-helper
+/usr/share/applications/io.github.astroute.Astroute.desktop
+/usr/share/metainfo/io.github.astroute.Astroute.metainfo.xml
+/usr/share/polkit-1/actions/io.github.astroute.Astroute.policy
+/usr/share/icons/hicolor/*/apps/io.github.astroute.Astroute*.svg
+%license /usr/share/licenses/astroute/LICENSE
+%doc /usr/share/doc/astroute/README.md

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Astroute
+Comment=Control network access and interfaces for each application
+Exec=astroute
+Icon=io.github.astroute.Astroute
+Type=Application
+Terminal=false
+Categories=Network;Security;
+Keywords=Firewall;Internet;Network;Interface;Routing;
+StartupNotify=true

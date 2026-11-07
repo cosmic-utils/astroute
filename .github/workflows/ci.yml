@@ -1,0 +1,22 @@
+name: Checks
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig-dev libwayland-dev libxkbcommon-dev libinput-dev libudev-dev libgbm-dev libegl1-mesa-dev nftables iproute2 desktop-file-utils openssl
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo check --workspace --all-targets --locked
+      - run: cargo build --release --workspace --locked
+      - run: desktop-file-validate resources/io.github.astroute.Astroute.desktop

@@ -1,0 +1,17 @@
+ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE}
+USER root
+ARG RUST_VERSION=1.93.1
+ENV CARGO_HOME=/opt/cargo RUSTUP_HOME=/opt/rustup
+ENV PATH=/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    build-essential ca-certificates curl git pkg-config libfontconfig-dev libwayland-dev \
+    libxkbcommon-dev libinput-dev libudev-dev libgbm-dev libegl1-mesa-dev \
+    dpkg-dev rpm zstd libarchive-tools desktop-file-utils python3 \
+    && rm -rf /var/lib/apt/lists/*
+RUN if ! rustc --version 2>/dev/null | grep -q "rustc ${RUST_VERSION} "; then \
+    curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+    https://sh.rustup.rs -o /tmp/rustup.sh \
+    && sh /tmp/rustup.sh -y --profile minimal --default-toolchain "${RUST_VERSION}" \
+    && rm /tmp/rustup.sh; fi
+WORKDIR /source

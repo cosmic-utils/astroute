@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>Astroute</title>
+  <defs>
+    <linearGradient id="dish-face" x1="55" y1="84" x2="208" y2="139" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c3f8e9"/>
+      <stop offset="1" stop-color="#9aece1"/>
+    </linearGradient>
+    <linearGradient id="dish-bowl" x1="60" y1="130" x2="211" y2="172" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#18b6bd"/>
+      <stop offset="1" stop-color="#008b9b"/>
+    </linearGradient>
+    <linearGradient id="body" x1="94" y1="173" x2="146" y2="219" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#98a5c0"/>
+      <stop offset="1" stop-color="#7a88a7"/>
+    </linearGradient>
+  </defs>
+  <path fill="none" stroke="#059ca9" stroke-linecap="round" stroke-width="13" d="m44 39 66 67"/>
+  <path fill="none" stroke="#0498a5" stroke-width="9" d="m146 189 65 7"/>
+  <rect x="202" y="183" width="28" height="27" rx="7" fill="#009aa8"/>
+  <path fill="#546984" d="m107 166-13 12v32q0 5 5 8l22 11q5 2 10 0l21-10q6-3 6-9v-36l-14-8Z"/>
+  <path fill="url(#body)" d="m107 166-13 12v32q0 5 5 8l22 11q4 2 8 0 3-2 3-7v-56Z"/>
+  <circle cx="113" cy="198" r="11" fill="#f7cd52"/>
+  <g transform="rotate(-22 134 112)">
+    <path fill="url(#dish-bowl)" d="M36 112c0 33 44 59 98 59s98-26 98-59c0 20-44 37-98 37s-98-17-98-37Z"/>
+    <ellipse cx="134" cy="112" rx="98" ry="37" fill="url(#dish-face)"/>
+  </g>
+  <path fill="none" stroke="#939fba" stroke-linejoin="round" stroke-width="7" d="m117 124 27-52 28 37"/>
+  <rect x="132" y="57" width="24" height="24" rx="6" fill="#adb7cd"/>
+</svg>

@@ -15,6 +15,12 @@ Requires: libxkbcommon, wayland, libglvnd-egl, libglvnd-glx, fontconfig, libinpu
 %description
 Choose network access, interfaces and SOCKS5 or HTTP(S) proxies for native desktop apps.
 
+%pre
+@GUARD@
+
+%preun
+@GUARD@
+
 %prep
 %setup -q -c
 

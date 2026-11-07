@@ -17,6 +17,7 @@ docker run --rm -v "$PWD:/source" -e CARGO_TARGET_DIR=/source/target/distributio
 
 On Arch, run `packaging/package.sh arch` as a regular user after creating the portable
 archive in `dist`. It generates a PKGBUILD with the archive's checksum and uses `makepkg`.
+Package hooks require controls to be disabled and Astroute closed before updates or removal.
 Output packages install into `/usr`; files and dependencies remain owned by the package manager.
 The portable archive is a packaging input, not a standalone installer.
 

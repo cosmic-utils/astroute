@@ -19,12 +19,19 @@ case "$format" in
         mkdir "$work/stage/DEBIAN"
         sed "s/@VERSION@/$version/g" "$root/packaging/debian/control.in" > "$work/stage/DEBIAN/control"
         install -m755 "$root/packaging/debian/postinst" "$work/stage/DEBIAN/postinst"
+        for hook in preinst prerm; do
+            { printf '#!/bin/sh\nset -e\n'; cat "$root/packaging/guard.sh"; printf '\ncheck_controls\n'; } > "$work/stage/DEBIAN/$hook"
+            chmod 755 "$work/stage/DEBIAN/$hook"
+        done
         dpkg-deb --root-owner-group --build "$work/stage" "$out/astroute_${version}-1_amd64.deb"
         ;;
     rpm)
         mkdir -p "$work/rpm/"{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
         cp "$out/$archive" "$work/rpm/SOURCES/"
-        sed "s/@VERSION@/$version/g" "$root/packaging/rpm/astroute.spec.in" > "$work/rpm/SPECS/astroute.spec"
+        awk -v version="$version" -v guard="$root/packaging/guard.sh" '
+            /^@GUARD@$/ { while ((getline line < guard) > 0) print line; close(guard); print "check_controls"; next }
+            { gsub(/@VERSION@/, version); print }
+        ' "$root/packaging/rpm/astroute.spec.in" > "$work/rpm/SPECS/astroute.spec"
         rpmbuild --define "_topdir $work/rpm" --define '_build_id_links none' -bb "$work/rpm/SPECS/astroute.spec"
         cp "$work/rpm/RPMS/x86_64/astroute-$version-1.x86_64.rpm" "$out/"
         ;;
@@ -32,6 +39,7 @@ case "$format" in
         cp "$out/$archive" "$work/"
         checksum=$(sha256sum "$out/$archive" | cut -d' ' -f1)
         sed -e "s/@VERSION@/$version/g" -e "s/@SHA256@/$checksum/g" "$root/packaging/arch/PKGBUILD.in" > "$work/PKGBUILD"
+        { cat "$root/packaging/guard.sh"; printf '\npre_install() { check_controls; }\npre_upgrade() { check_controls; }\npre_remove() { check_controls; }\n'; } > "$work/astroute.install"
         (cd "$work" && PACKAGER="Astroute contributors <motixo@users.noreply.github.com>" makepkg --nodeps --nocheck --noconfirm)
         cp "$work/astroute-$version-1-x86_64.pkg.tar.zst" "$out/"
         ;;

@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/cosmic-utils/astroute/main/install.
 The installer downloads the latest package, verifies its checksum and installs dependencies
 through your package manager. Native `.deb`, `.pkg.tar.zst` and `.rpm` packages are also
 available under [Releases](https://github.com/cosmic-utils/astroute/releases).
-Quit Astroute before updating. Remove it with your package manager.
+Quit Astroute before updating or removing it with your package manager.
 
 ## Use
 

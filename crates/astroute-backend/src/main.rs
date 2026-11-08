@@ -1,5 +1,5 @@
 use anyhow::{Context, bail};
-use astroute_backend::{Result, client, daemon, proxy};
+use astroute_backend::{Result, client, daemon, proxy, system_route};
 use serde_json::json;
 use std::io::Write;
 fn main() {
@@ -23,6 +23,16 @@ fn main() {
     let result = (|| -> Result<()> {
         if arguments == ["--proxy-worker"] {
             return proxy::worker();
+        }
+        if arguments
+            .first()
+            .is_some_and(|argument| argument == "--system-route")
+        {
+            return match arguments.as_slice() {
+                [_, family] => system_route::set(family, None),
+                [_, family, interface] => system_route::set(family, Some(interface)),
+                _ => bail!("Invalid system default route arguments"),
+            };
         }
         if arguments.len() == 3 && arguments[0] == "--cleanup" && arguments[1] == "--uid" {
             return daemon::cleanup(arguments[2].parse().context("Invalid user ID")?);

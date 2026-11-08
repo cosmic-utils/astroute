@@ -35,6 +35,10 @@ Unsupported apps, including Flatpaks, are hidden.
 
 **Settings** includes startup at login, manual update checks and the installed version.
 
+In **Interfaces**, choose a system default for IPv4 or IPv6 from interfaces with a usable
+default route. VPN and per-app routing rules keep their priority. **Automatic** removes
+the preference, which also clears on reboot.
+
 Closing the window keeps the tray running. If the tray is unavailable, the window minimizes.
 **Quit Astroute** or **Ctrl+Q** disables controls before exiting. Cleanup errors keep the app open.
 

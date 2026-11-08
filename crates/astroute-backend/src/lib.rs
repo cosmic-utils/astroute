@@ -9,6 +9,7 @@ pub mod linux;
 pub mod proxy;
 pub mod scopes;
 pub mod store;
+pub mod system_route;
 pub mod types;
 
 pub type Result<T> = anyhow::Result<T>;

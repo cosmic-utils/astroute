@@ -581,6 +581,7 @@ impl Kernel {
                     .filter(|r| {
                         r["dev"] == interface
                             && r["table"] != mark
+                            && !crate::system_route::owned_route(r)
                             && r["table"] != "local"
                             && r["table"] != 255
                             && r.get("type").is_none_or(|v| v == "unicast")

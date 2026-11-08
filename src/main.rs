@@ -112,6 +112,8 @@ enum Message {
     WindowOpened(iced::window::Id, Option<String>),
     WindowClosed(iced::window::Id),
     Loaded(u64, Result<Snapshot, String>),
+    SelectSystemRoute(usize, Option<String>),
+    ApplySystemRoute(usize),
     LoadAutostart,
     AutostartLoaded(Result<bool, String>),
     SetAutostart(bool),
@@ -195,6 +197,7 @@ struct Astroute {
     notice: Option<String>,
     failed: bool,
     settings: settings::State,
+    system_route_drafts: [Option<Option<String>>; 2],
 }
 
 impl cosmic::Application for Astroute {
@@ -275,6 +278,7 @@ impl cosmic::Application for Astroute {
             notice: None,
             failed: false,
             settings: settings::State::default(),
+            system_route_drafts: [None, None],
         };
         app.set_header_title(fl!("app-title"));
         let title = if let Some(id) = app.core.main_window_id() {
@@ -305,10 +309,15 @@ impl cosmic::Application for Astroute {
         self.rule_error = None;
         self.dirty = false;
         self.load_draft();
-        if self.nav.active_data::<Page>() == Some(&Page::Settings) {
-            return self.load_autostart();
+        match self.nav.active_data::<Page>() {
+            Some(Page::Settings) => self.load_autostart(),
+            Some(Page::Interfaces) => {
+                self.system_route_drafts = [None, None];
+                self.revision = self.revision.wrapping_add(1);
+                self.load()
+            }
+            _ => Task::none(),
         }
-        Task::none()
     }
 
     fn context_drawer(&self) -> Option<context_drawer::ContextDrawer<'_, Message>> {
@@ -373,6 +382,7 @@ impl cosmic::Application for Astroute {
                 | Message::Enable
                 | Message::Disable
                 | Message::Apply
+                | Message::ApplySystemRoute(_)
                 | Message::Operation(_)
                 | Message::RuleOperation { .. }
                 | Message::ProxyOperation(_)
@@ -613,6 +623,7 @@ impl Astroute {
                     | Message::Enable
                     | Message::Disable
                     | Message::Apply
+                    | Message::ApplySystemRoute(_)
                     | Message::Launch
                     | Message::TestProxy(_)
                     | Message::LoadAutostart
@@ -652,6 +663,39 @@ impl Astroute {
             self.proxy_error = None;
         }
         match message {
+            Message::SelectSystemRoute(index, interface) => {
+                if !self.busy
+                    && let Some(draft) = self.system_route_drafts.get_mut(index)
+                {
+                    *draft = Some(interface);
+                }
+            }
+            Message::ApplySystemRoute(index) => {
+                if self.busy {
+                    return Task::none();
+                }
+                let Some(family) = ["-4", "-6"].get(index) else {
+                    return Task::none();
+                };
+                let Some(route) = self
+                    .data
+                    .system_routes
+                    .as_ref()
+                    .map(|routes| &routes[index])
+                else {
+                    return Task::none();
+                };
+                let interface = self.system_route_drafts[index]
+                    .take()
+                    .unwrap_or_else(|| route.preferred.clone());
+                if !route.can_apply(interface.as_deref()) {
+                    return Task::none();
+                }
+                self.busy = true;
+                let mut args = vec!["system-route".into(), (*family).into()];
+                args.extend(interface);
+                return Self::operate(args);
+            }
             Message::LoadAutostart => return self.load_autostart(),
             Message::AutostartLoaded(result) => {
                 self.settings.loading_autostart = false;
@@ -1121,11 +1165,12 @@ impl Astroute {
 
     fn load(&self) -> Task<Message> {
         let revision = self.revision;
+        let mut arguments = vec!["snapshot".into()];
+        if self.nav.active_data::<Page>() == Some(&Page::Interfaces) {
+            arguments.push("system-routes".into());
+        }
         Task::perform(
-            async {
-                serde_json::from_value(client(vec!["snapshot".into()]).await?)
-                    .map_err(|e| e.to_string())
-            },
+            async move { serde_json::from_value(client(arguments).await?).map_err(|e| e.to_string()) },
             move |r| cosmic::Action::App(Message::Loaded(revision, r)),
         )
     }
@@ -1747,8 +1792,18 @@ impl Astroute {
         let mut list = widget::column::with_capacity(16)
             .spacing(12)
             .push(widget::text::title3(fl!("network-interfaces")))
-            .push(widget::text::body(fl!("interfaces-description")));
+            .push(widget::text::body(fl!("interfaces-description")))
+            .push(self.system_routes_view());
         for interface in &self.data.interfaces {
+            let is_default = self
+                .data
+                .system_routes
+                .as_ref()
+                .map_or(interface.default, |routes| {
+                    routes
+                        .iter()
+                        .any(|route| route.current.as_ref() == Some(&interface.name))
+                });
             let addresses = if interface.addresses.is_empty() {
                 fl!("no-address")
             } else {
@@ -1777,7 +1832,7 @@ impl Astroute {
                                 .push(widget::text::body(addresses))
                                 .width(Length::Fill),
                         )
-                        .push(widget::text::caption(if interface.default {
+                        .push(widget::text::caption(if is_default {
                             fl!("default-route")
                         } else if interface.up {
                             fl!("up")
@@ -1790,6 +1845,71 @@ impl Astroute {
             );
         }
         widget::scrollable(list).height(Length::Fill).into()
+    }
+
+    fn system_routes_view(&self) -> Element<'_, Message> {
+        let mut section = widget::settings::section()
+            .title(fl!("system-default-route"))
+            .add(widget::text::caption(fl!(
+                "system-default-route-description"
+            )));
+        let Some(routes) = self.data.system_routes.as_deref() else {
+            return section
+                .add(widget::text::caption(fl!("reading-system-routes")))
+                .into();
+        };
+        for (index, (family, route)) in ["IPv4", "IPv6"].into_iter().zip(routes).enumerate() {
+            let status = route.current.as_deref().unwrap_or("—");
+            let mut options = vec![fl!("system-route-automatic")];
+            let mut interfaces = vec![None];
+            if route.error.is_none() {
+                for name in &route.candidates {
+                    options.push(name.clone());
+                    interfaces.push(Some(name.clone()));
+                }
+            }
+            if let Some(preferred) = &route.preferred
+                && !interfaces.contains(&Some(preferred.clone()))
+            {
+                options.push(preferred.clone());
+                interfaces.push(Some(preferred.clone()));
+            }
+            let selected = self.system_route_drafts[index]
+                .as_ref()
+                .unwrap_or(&route.preferred);
+            let selection = interfaces
+                .iter()
+                .position(|interface| interface == selected)
+                .unwrap_or(0);
+            let can_apply =
+                !self.busy && !self.quit_requested && route.can_apply(selected.as_deref());
+            let button = widget::button::standard(fl!("apply-system-route"))
+                .on_press_maybe(can_apply.then_some(Message::ApplySystemRoute(index)));
+            let control: Element<'_, Message> = if interfaces.len() > 1 || route.can_reset {
+                widget::row::with_capacity(2)
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(
+                        widget::dropdown(options, Some(selection), move |choice| {
+                            Message::SelectSystemRoute(index, interfaces[choice].clone())
+                        })
+                        .width(Length::Fixed(168.)),
+                    )
+                    .push(button)
+                    .into()
+            } else {
+                widget::text::caption(fl!("no-system-route-options")).into()
+            };
+            section = section.add(
+                widget::settings::item::builder(family)
+                    .description(format!("{}: {status}", fl!("current-system-route")))
+                    .control(control),
+            );
+            if let Some(error) = &route.error {
+                section = section.add(Self::settings_error(error));
+            }
+        }
+        section.into()
     }
 
     fn load_autostart(&mut self) -> Task<Message> {

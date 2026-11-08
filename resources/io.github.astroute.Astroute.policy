@@ -9,5 +9,24 @@
       <allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin_keep</allow_active>
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/astroute-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">--uid</annotate>
+  </action>
+  <action id="io.github.astroute.Astroute.cleanup">
+    <description>Restore application network access</description>
+    <message>Authentication is required to remove application network controls</message>
+    <defaults>
+      <allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/astroute-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">--cleanup</annotate>
+  </action>
+  <action id="io.github.astroute.Astroute.system-route">
+    <description>Change the system default route</description>
+    <message>Authentication is required to change the system default route</message>
+    <defaults>
+      <allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/astroute-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">--system-route</annotate>
   </action>
 </policyconfig>

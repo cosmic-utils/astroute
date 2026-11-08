@@ -1,6 +1,7 @@
 use crate::{
     Result, autostart, daemon, inventory, launcher, linux, proxy,
     store::Store,
+    system_route,
     types::{Application, Policy, Profile},
 };
 use anyhow::{Context, bail, ensure};
@@ -309,7 +310,50 @@ fn argument(arguments: &[String], index: usize) -> Result<&str> {
 pub fn run(arguments: &[String]) -> Result<Value> {
     let method = arguments.first().map(String::as_str).unwrap_or("snapshot");
     match method {
-        "snapshot" => snapshot(),
+        "snapshot" => {
+            let mut state = snapshot()?;
+            if arguments
+                .get(1)
+                .is_some_and(|argument| argument == "system-routes")
+            {
+                state["system_routes"] = json!(system_route::snapshot());
+            }
+            Ok(state)
+        }
+        "system-route" => {
+            let family = argument(arguments, 1)?;
+            ensure!(
+                system_route::FAMILIES.contains(&family) && arguments.len() <= 3,
+                "Invalid system default route arguments"
+            );
+            let interface = arguments.get(2).map(String::as_str);
+            ensure!(
+                interface.is_none_or(crate::types::valid_interface),
+                "Invalid network interface"
+            );
+            let output = Command::new("/usr/bin/pkexec")
+                .arg("--disable-internal-agent")
+                .arg(linux::helper_path()?)
+                .args(["--system-route", family])
+                .args(interface)
+                .stdin(Stdio::null())
+                .output()
+                .context("Unable to authenticate the default route change")?;
+            let error = String::from_utf8_lossy(&output.stderr);
+            ensure!(
+                output.status.success(),
+                "{}",
+                if error.trim().is_empty() {
+                    "Unable to change the system default route"
+                } else {
+                    error.trim()
+                }
+            );
+            Ok(json!({"message": match interface {
+                Some(interface) => format!("Preferred default route set to {interface}"),
+                None => "Automatic default routing restored".into(),
+            }}))
+        }
         "autostart" => match arguments.len() {
             1 => Ok(json!({"enabled": autostart::enabled()?})),
             3 => {

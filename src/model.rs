@@ -6,6 +6,7 @@ pub struct Snapshot {
     pub enabled: bool,
     pub apps: Vec<Application>,
     pub interfaces: Vec<Interface>,
+    pub system_routes: Option<Box<[SystemRoute; 2]>>,
     pub connections: Vec<Connection>,
     pub policies: Vec<Policy>,
     pub pending_rules: Vec<String>,
@@ -103,6 +104,29 @@ pub struct Interface {
     pub up: bool,
     pub default: bool,
     pub addresses: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct SystemRoute {
+    pub preferred: Option<String>,
+    pub current: Option<String>,
+    pub candidates: Vec<String>,
+    pub can_reset: bool,
+    pub error: Option<String>,
+}
+
+impl SystemRoute {
+    pub fn can_apply(&self, interface: Option<&str>) -> bool {
+        match interface {
+            Some(name) => {
+                self.error.is_none()
+                    && self.candidates.iter().any(|candidate| candidate == name)
+                    && self.preferred.as_deref() != Some(name)
+            }
+            None => self.can_reset,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

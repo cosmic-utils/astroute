@@ -5,7 +5,7 @@ pkgdesc='Per-application network controls for COSMIC'
 arch=('x86_64')
 url='https://github.com/cosmic-utils/astroute'
 license=('GPL-3.0-only')
-depends=('glibc>=2.35' 'libgcc' 'libxkbcommon' 'wayland' 'libglvnd' 'fontconfig' 'libinput' 'systemd-libs' 'nftables' 'iproute2' 'polkit' 'ca-certificates')
+depends=('glibc>=2.35' 'libgcc' 'libxkbcommon' 'wayland' 'libglvnd' 'fontconfig' 'libinput' 'systemd-libs' 'nftables' 'iproute2' 'polkit' 'ca-certificates' 'xdg-utils')
 options=('!strip' '!debug')
 install=astroute.install
 source=("astroute-$pkgver-linux-x86_64.tar.gz")

@@ -33,6 +33,8 @@ Fully quit existing app processes and relaunch through Astroute or the managed a
 entry to enforce rules from startup. Direct or alternate launches are detected after startup.
 Unsupported apps, including Flatpaks, are hidden.
 
+**Settings** includes startup at login, manual update checks and the installed version.
+
 Closing the window keeps the tray running. **Quit Astroute** disables controls before exiting;
 cleanup errors keep the app open. Editing a proxy marks affected rules pending for **Apply
 saved rules**. Proxy tests are available beside saved profiles and use Cloudflare's HTTPS endpoint.

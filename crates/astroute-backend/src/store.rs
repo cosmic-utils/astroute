@@ -11,12 +11,8 @@ pub struct Store {
 }
 impl Store {
     pub fn user() -> Result<Self> {
-        let base = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .filter(|p| p.is_absolute())
-            .unwrap_or(linux::user(linux::uid())?.home.join(".config"));
         Ok(Self {
-            directory: base.join("cosmic-netguard"),
+            directory: linux::config_home()?.join("cosmic-netguard"),
         })
     }
     fn read(&self, name: &str) -> Result<Value> {

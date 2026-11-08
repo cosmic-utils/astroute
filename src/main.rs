@@ -1,5 +1,6 @@
 mod localize;
 mod model;
+mod settings;
 mod tray;
 
 use cosmic::app::{Settings, Task, context_drawer};
@@ -111,6 +112,14 @@ enum Message {
     WindowOpened(iced::window::Id, Option<String>),
     WindowClosed(iced::window::Id),
     Loaded(u64, Result<Snapshot, String>),
+    LoadAutostart,
+    AutostartLoaded(Result<bool, String>),
+    SetAutostart(bool),
+    AutostartSaved(Result<bool, String>),
+    CheckUpdate,
+    UpdateChecked(Result<settings::Update, String>),
+    OpenRelease,
+    ReleaseOpened(Result<(), String>),
     Select(String),
     CloseRuleEditor,
     RuleOperation {
@@ -154,6 +163,7 @@ enum Page {
     Interfaces,
     Proxies,
     Activity,
+    Settings,
 }
 
 struct Astroute {
@@ -184,6 +194,7 @@ struct Astroute {
     rules_only: bool,
     notice: Option<String>,
     failed: bool,
+    settings: settings::State,
 }
 
 impl cosmic::Application for Astroute {
@@ -223,6 +234,11 @@ impl cosmic::Application for Astroute {
                 fl!("activity"),
                 "document-open-recent-symbolic",
             ),
+            (
+                Page::Settings,
+                fl!("settings"),
+                "preferences-system-symbolic",
+            ),
         ] {
             nav.insert()
                 .text(label)
@@ -258,6 +274,7 @@ impl cosmic::Application for Astroute {
             rules_only: false,
             notice: None,
             failed: false,
+            settings: settings::State::default(),
         };
         app.set_header_title(fl!("app-title"));
         let title = if let Some(id) = app.core.main_window_id() {
@@ -271,7 +288,8 @@ impl cosmic::Application for Astroute {
             .and_then(|id| tray::window_icon().map(|icon| iced::window::set_icon(id, icon)))
             .unwrap_or_else(Task::none);
         let load = app.load();
-        (app, Task::batch([title, icon, load]))
+        let startup = app.load_autostart();
+        (app, Task::batch([title, icon, load, startup]))
     }
 
     fn nav_model(&self) -> Option<&nav_bar::Model> {
@@ -287,6 +305,9 @@ impl cosmic::Application for Astroute {
         self.rule_error = None;
         self.dirty = false;
         self.load_draft();
+        if self.nav.active_data::<Page>() == Some(&Page::Settings) {
+            return self.load_autostart();
+        }
         Task::none()
     }
 
@@ -360,7 +381,11 @@ impl cosmic::Application for Astroute {
             self.revision = self.revision.wrapping_add(1);
         }
         let task = self.handle_message(message);
-        let shutdown = if self.quit_requested && !self.busy && !self.quitting {
+        let shutdown = if self.quit_requested
+            && !self.busy
+            && !self.settings.saving_autostart
+            && !self.quitting
+        {
             self.quitting = true;
             self.busy = true;
             Task::perform(client(vec!["disable".into()]), |result| {
@@ -424,50 +449,57 @@ impl cosmic::Application for Astroute {
 
     fn view(&self) -> Element<'_, Message> {
         let mut content = widget::column::with_capacity(16).spacing(16).padding(20);
-        let status_icon = if self.data.enabled {
-            "security-high-symbolic"
-        } else {
-            "security-medium-symbolic"
-        };
-        let mut status_icon = widget::icon::from_name(status_icon).size(32).icon();
-        if self.data.enabled {
-            status_icon =
-                status_icon.class(cosmic::theme::Svg::custom(|theme| widget::svg::Style {
-                    color: Some(theme.cosmic().accent_text_color().into()),
-                }));
+        let page = self
+            .nav
+            .active_data::<Page>()
+            .copied()
+            .unwrap_or(Page::Apps);
+        if page != Page::Settings {
+            let status_icon = if self.data.enabled {
+                "security-high-symbolic"
+            } else {
+                "security-medium-symbolic"
+            };
+            let mut status_icon = widget::icon::from_name(status_icon).size(32).icon();
+            if self.data.enabled {
+                status_icon =
+                    status_icon.class(cosmic::theme::Svg::custom(|theme| widget::svg::Style {
+                        color: Some(theme.cosmic().accent_text_color().into()),
+                    }));
+            }
+            let status = widget::row::with_capacity(8)
+                .spacing(16)
+                .align_y(Alignment::Center)
+                .push(status_icon)
+                .push(
+                    widget::column::with_capacity(16)
+                        .spacing(4)
+                        .push(
+                            widget::text::heading(if self.data.enabled {
+                                fl!("controls-active")
+                            } else {
+                                fl!("monitor-only")
+                            })
+                            .class(if self.data.enabled {
+                                cosmic::theme::Text::Accent
+                            } else {
+                                cosmic::theme::Text::Default
+                            }),
+                        )
+                        .push(widget::text::body(fl!("status-description"))),
+                )
+                .push(widget::Space::new().width(Length::Fill))
+                .push(Self::stat(self.data.policies.len(), fl!("saved-rules")))
+                .push(Self::stat(
+                    self.data.connections.len(),
+                    fl!("open-connections"),
+                ));
+            content = content.push(
+                widget::container(status)
+                    .padding(18)
+                    .class(cosmic::theme::Container::Card),
+            );
         }
-        let status = widget::row::with_capacity(8)
-            .spacing(16)
-            .align_y(Alignment::Center)
-            .push(status_icon)
-            .push(
-                widget::column::with_capacity(16)
-                    .spacing(4)
-                    .push(
-                        widget::text::heading(if self.data.enabled {
-                            fl!("controls-active")
-                        } else {
-                            fl!("monitor-only")
-                        })
-                        .class(if self.data.enabled {
-                            cosmic::theme::Text::Accent
-                        } else {
-                            cosmic::theme::Text::Default
-                        }),
-                    )
-                    .push(widget::text::body(fl!("status-description"))),
-            )
-            .push(widget::Space::new().width(Length::Fill))
-            .push(Self::stat(self.data.policies.len(), fl!("saved-rules")))
-            .push(Self::stat(
-                self.data.connections.len(),
-                fl!("open-connections"),
-            ));
-        content = content.push(
-            widget::container(status)
-                .padding(18)
-                .class(cosmic::theme::Container::Card),
-        );
         if let Some(notice) = &self.notice {
             content = content.push(
                 widget::container(
@@ -498,20 +530,16 @@ impl cosmic::Application for Astroute {
                 .class(cosmic::theme::Container::Card),
             );
         }
-        if !self.loaded {
+        if !self.loaded && page != Page::Settings {
             return content.push(widget::text::body(fl!("loading"))).into();
         }
-        let page = self
-            .nav
-            .active_data::<Page>()
-            .copied()
-            .unwrap_or(Page::Apps);
         content = content.push(match page {
             Page::Apps => self.apps_view(),
             Page::Connections => self.connections_view(),
             Page::Interfaces => self.interfaces_view(),
             Page::Proxies => self.proxies_view(),
             Page::Activity => self.activity_view(),
+            Page::Settings => self.settings_view(),
         });
         content.width(Length::Fill).height(Length::Fill).into()
     }
@@ -587,6 +615,10 @@ impl Astroute {
                     | Message::Apply
                     | Message::Launch
                     | Message::TestProxy(_)
+                    | Message::LoadAutostart
+                    | Message::SetAutostart(_)
+                    | Message::CheckUpdate
+                    | Message::OpenRelease
             )
         {
             return Task::none();
@@ -620,6 +652,84 @@ impl Astroute {
             self.proxy_error = None;
         }
         match message {
+            Message::LoadAutostart => return self.load_autostart(),
+            Message::AutostartLoaded(result) => {
+                self.settings.loading_autostart = false;
+                match result {
+                    Ok(enabled) => {
+                        self.settings.autostart = Some(enabled);
+                        self.settings.autostart_error = None;
+                    }
+                    Err(error) => self.settings.autostart_error = Some(error),
+                }
+            }
+            Message::SetAutostart(enabled) => {
+                if self.settings.loading_autostart
+                    || self.settings.saving_autostart
+                    || self.settings.autostart.is_none()
+                {
+                    return Task::none();
+                }
+                self.settings.saving_autostart = true;
+                self.settings.autostart_error = None;
+                return Task::perform(
+                    async move {
+                        let executable =
+                            std::env::current_exe().map_err(|error| error.to_string())?;
+                        let path = executable
+                            .to_str()
+                            .ok_or("Invalid startup executable path")?;
+                        let value = client(vec![
+                            "autostart".into(),
+                            if enabled { "on" } else { "off" }.into(),
+                            path.into(),
+                        ])
+                        .await?;
+                        value["enabled"]
+                            .as_bool()
+                            .ok_or_else(|| "Invalid startup settings response".into())
+                    },
+                    |result| cosmic::Action::App(Message::AutostartSaved(result)),
+                );
+            }
+            Message::AutostartSaved(result) => {
+                self.settings.saving_autostart = false;
+                match result {
+                    Ok(enabled) => self.settings.autostart = Some(enabled),
+                    Err(error) => self.settings.autostart_error = Some(error),
+                }
+            }
+            Message::CheckUpdate => {
+                if matches!(self.settings.update, settings::Update::Checking)
+                    || self.settings.opening_release
+                {
+                    return Task::none();
+                }
+                self.settings.update = settings::Update::Checking;
+                self.settings.release_error = None;
+                return Task::perform(settings::check_update(), |result| {
+                    cosmic::Action::App(Message::UpdateChecked(result))
+                });
+            }
+            Message::UpdateChecked(result) => {
+                self.settings.update = result.unwrap_or_else(settings::Update::Failed);
+            }
+            Message::OpenRelease => {
+                if self.settings.opening_release {
+                    return Task::none();
+                }
+                if let settings::Update::Available(release) = &self.settings.update {
+                    self.settings.opening_release = true;
+                    self.settings.release_error = None;
+                    return Task::perform(settings::open_release(release.clone()), |result| {
+                        cosmic::Action::App(Message::ReleaseOpened(result))
+                    });
+                }
+            }
+            Message::ReleaseOpened(result) => {
+                self.settings.opening_release = false;
+                self.settings.release_error = result.err();
+            }
             Message::TrayReady(controller) => self.tray = Some(controller),
             Message::TrayAvailable(available) => {
                 let restore = self.tray_available && !available;
@@ -1672,6 +1782,121 @@ impl Astroute {
                 .padding(18)
                 .class(cosmic::theme::Container::Card),
             );
+        }
+        widget::scrollable(list).height(Length::Fill).into()
+    }
+
+    fn load_autostart(&mut self) -> Task<Message> {
+        if self.settings.loading_autostart || self.settings.saving_autostart || self.quit_requested
+        {
+            return Task::none();
+        }
+        self.settings.loading_autostart = true;
+        self.settings.autostart_error = None;
+        Task::perform(
+            async {
+                let value = client(vec!["autostart".into()]).await?;
+                value["enabled"]
+                    .as_bool()
+                    .ok_or_else(|| "Invalid startup settings response".into())
+            },
+            |result| cosmic::Action::App(Message::AutostartLoaded(result)),
+        )
+    }
+
+    fn settings_error<'a>(error: &'a str) -> Element<'a, Message> {
+        widget::row::with_capacity(2)
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .push(Self::error_icon())
+            .push(widget::text::body(error).class(cosmic::theme::Text::Color(
+                cosmic::theme::active().cosmic().destructive.base.into(),
+            )))
+            .into()
+    }
+
+    fn settings_view(&self) -> Element<'_, Message> {
+        let settings = &self.settings;
+        let can_toggle = settings.autostart.is_some()
+            && !settings.loading_autostart
+            && !settings.saving_autostart
+            && !self.quit_requested;
+        let startup = widget::settings::section().title(fl!("general")).add(
+            widget::settings::item::builder(fl!("start-on-boot"))
+                .description(fl!("start-on-boot-description"))
+                .toggler_maybe(
+                    settings.autostart.unwrap_or(false),
+                    can_toggle.then_some(Message::SetAutostart),
+                ),
+        );
+        let mut list = widget::column::with_capacity(8)
+            .spacing(20)
+            .push(widget::text::title3(fl!("settings")))
+            .push(startup);
+        if let Some(error) = &settings.autostart_error {
+            let mut retry = widget::button::text(fl!("retry"));
+            if !settings.loading_autostart && !settings.saving_autostart && !self.quit_requested {
+                retry = retry.on_press(Message::LoadAutostart);
+            }
+            list = list.push(
+                widget::row::with_capacity(2)
+                    .spacing(12)
+                    .align_y(Alignment::Center)
+                    .push(widget::container(Self::settings_error(error)).width(Length::Fill))
+                    .push(retry),
+            );
+        }
+        let checking = matches!(settings.update, settings::Update::Checking);
+        let mut check = widget::button::standard(if checking {
+            fl!("checking-updates")
+        } else {
+            fl!("check-updates")
+        });
+        if !checking && !settings.opening_release && !self.quit_requested {
+            check = check.on_press(Message::CheckUpdate);
+        }
+        list = list.push(
+            widget::settings::section()
+                .title(fl!("updates"))
+                .add(widget::settings::item(
+                    fl!("current-version"),
+                    widget::text::body(settings::VERSION),
+                ))
+                .add(
+                    widget::settings::item::builder(fl!("software-updates"))
+                        .description(fl!("check-updates-description"))
+                        .control(check),
+                ),
+        );
+        match &settings.update {
+            settings::Update::Current => list = list.push(widget::text::body(fl!("up-to-date"))),
+            settings::Update::Available(release) => {
+                let mut open = widget::button::suggested(fl!("open-release"))
+                    .trailing_icon(widget::icon::from_name("external-link-symbolic").handle());
+                if !settings.opening_release && !self.quit_requested {
+                    open = open.on_press(Message::OpenRelease);
+                }
+                list = list.push(
+                    widget::row::with_capacity(2)
+                        .spacing(16)
+                        .align_y(Alignment::Center)
+                        .push(
+                            widget::text::body(format!(
+                                "{} {}",
+                                fl!("update-available"),
+                                release.version
+                            ))
+                            .width(Length::Fill),
+                        )
+                        .push(open),
+                );
+            }
+            settings::Update::NoRelease => list = list.push(widget::text::body(fl!("no-release"))),
+            settings::Update::Failed(error) => list = list.push(Self::settings_error(error)),
+            settings::Update::Idle | settings::Update::Checking => {}
+        }
+        if let Some(error) = &settings.release_error {
+            list = list.push(Self::settings_error(error));
         }
         widget::scrollable(list).height(Length::Fill).into()
     }

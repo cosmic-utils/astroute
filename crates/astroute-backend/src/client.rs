@@ -1,5 +1,5 @@
 use crate::{
-    Result, daemon, inventory, launcher, linux, proxy,
+    Result, autostart, daemon, inventory, launcher, linux, proxy,
     store::Store,
     types::{Application, Policy, Profile},
 };
@@ -310,6 +310,19 @@ pub fn run(arguments: &[String]) -> Result<Value> {
     let method = arguments.first().map(String::as_str).unwrap_or("snapshot");
     match method {
         "snapshot" => snapshot(),
+        "autostart" => match arguments.len() {
+            1 => Ok(json!({"enabled": autostart::enabled()?})),
+            3 => {
+                let enabled = match argument(arguments, 1)? {
+                    "on" => true,
+                    "off" => false,
+                    _ => bail!("Startup setting must be on or off"),
+                };
+                autostart::set(enabled, std::path::Path::new(argument(arguments, 2)?))?;
+                Ok(json!({"enabled": enabled}))
+            }
+            _ => bail!("Invalid startup settings arguments"),
+        },
         "enable" => enable().map(|mut value| {
             value["enabled"] = json!(true);
             value

@@ -6,7 +6,7 @@ License: GPL-3.0-only
 URL: https://github.com/cosmic-utils/astroute
 Source0: astroute-@VERSION@-linux-x86_64.tar.gz
 ExclusiveArch: x86_64
-Requires: nftables, iproute, polkit, ca-certificates
+Requires: nftables, iproute, polkit, ca-certificates, xdg-utils
 Requires: /usr/bin/pkexec
 Requires: libxkbcommon, wayland, libglvnd-egl, libglvnd-glx, fontconfig, libinput, systemd-libs
 %global debug_package %{nil}

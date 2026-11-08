@@ -52,6 +52,15 @@ pub fn user(uid: u32) -> Result<User> {
 pub fn uid() -> u32 {
     unsafe { libc::getuid() }
 }
+pub fn config_home() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+    {
+        return Ok(path);
+    }
+    Ok(user(uid())?.home.join(".config"))
+}
 pub fn ifindex(name: &str) -> Result<u32> {
     let name = CString::new(name)?;
     let index = unsafe { libc::if_nametoindex(name.as_ptr()) };

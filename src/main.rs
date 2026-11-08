@@ -106,7 +106,7 @@ enum Message {
     TrayUnavailable(String),
     TrayAction(tray::Action, Option<String>),
     Show(Option<String>),
-    Hide,
+    CloseWindow(iced::window::Id),
     Quit,
     QuitFinished(Result<Value, String>),
     WindowOpened(iced::window::Id, Option<String>),
@@ -348,7 +348,7 @@ impl cosmic::Application for Astroute {
         iced::Subscription::batch([
             iced::time::every(std::time::Duration::from_secs(3)).map(|_| Message::Tick),
             tray::subscription(),
-            iced::window::close_requests().map(|_| Message::Hide),
+            iced::window::close_requests().map(Message::CloseWindow),
             iced::event::listen_with(|event, _, _| match event {
                 iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                     key, modifiers, ..
@@ -406,7 +406,7 @@ impl cosmic::Application for Astroute {
     }
 
     fn on_app_exit(&mut self) -> Option<Message> {
-        Some(Message::Hide)
+        self.core.main_window_id().map(Message::CloseWindow)
     }
 
     fn on_close_requested(&self, id: iced::window::Id) -> Option<Message> {
@@ -735,7 +735,10 @@ impl Astroute {
             }
             Message::TrayReady(controller) => self.tray = Some(controller),
             Message::TrayAvailable(available) => {
-                let restore = self.tray_available && !available;
+                let restore = self.tray_available
+                    && !available
+                    && self.core.main_window_id().is_none()
+                    && !self.quit_requested;
                 self.tray_available = available;
                 if restore {
                     return self.show_window(None);
@@ -754,14 +757,14 @@ impl Astroute {
                 };
             }
             Message::Show(token) => return self.show_window(token),
-            Message::Hide => {
-                if self.tray_available && !self.quit_requested {
-                    if let Some(id) = self.core.main_window_id() {
-                        self.core.set_main_window_id(None);
+            Message::CloseWindow(id) => {
+                if !self.quit_requested && self.core.main_window_id() == Some(id) {
+                    if self.tray_available {
+                        // libcosmic can still render this window until WindowClosed arrives.
                         return iced::window::close(id);
                     }
-                } else if !self.quit_requested {
-                    self.quit_requested = true;
+                    // Keep the window reachable while the tray is registering or unavailable.
+                    return iced::window::minimize(id, true);
                 }
             }
             Message::Quit => self.quit_requested = true,
@@ -784,8 +787,8 @@ impl Astroute {
             Message::WindowClosed(id) => {
                 if self.core.main_window_id() == Some(id) {
                     self.core.set_main_window_id(None);
-                    if !self.tray_available {
-                        self.quit_requested = true;
+                    if !self.tray_available && !self.quit_requested {
+                        return self.show_window(None);
                     }
                 }
             }

@@ -35,9 +35,11 @@ Unsupported apps, including Flatpaks, are hidden.
 
 **Settings** includes startup at login, manual update checks and the installed version.
 
-Closing the window keeps the tray running. **Quit Astroute** disables controls before exiting;
-cleanup errors keep the app open. Editing a proxy marks affected rules pending for **Apply
-saved rules**. Proxy tests are available beside saved profiles and use Cloudflare's HTTPS endpoint.
+Closing the window keeps the tray running. If the tray is unavailable, the window minimizes.
+**Quit Astroute** or **Ctrl+Q** disables controls before exiting. Cleanup errors keep the app open.
+
+Editing a proxy marks affected rules pending for **Apply saved rules**. Proxy tests are
+available beside saved profiles and use Cloudflare's HTTPS endpoint.
 
 Requires cgroup v2, cgroup BPF links, nftables and polkit. Shared resolvers, portals and services
 follow their own network policy. Astroute is not a sandbox for hostile applications.

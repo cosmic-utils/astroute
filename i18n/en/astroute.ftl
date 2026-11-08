@@ -105,5 +105,6 @@ checking-updates = Checking…
 up-to-date = You are using the latest version.
 update-available = New version available:
 open-release = Open release
+view-releases = View releases
 no-release = No stable release is available yet.
 retry = Retry

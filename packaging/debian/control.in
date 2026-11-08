@@ -5,6 +5,6 @@ Maintainer: Astroute contributors <motixo@users.noreply.github.com>
 Section: net
 Priority: optional
 Homepage: https://github.com/cosmic-utils/astroute
-Depends: libc6 (>= 2.35), libgcc-s1, libxkbcommon0, libwayland-client0, libwayland-cursor0, libegl1, libgl1, libfontconfig1, libinput10, libudev1, nftables, iproute2, pkexec, polkitd, ca-certificates, xdg-utils
+Depends: libc6 (>= 2.35), libgcc-s1, libxkbcommon0, libwayland-client0, libwayland-cursor0, libegl1, libgl1, libfontconfig1, libinput10, libudev1, nftables, iproute2, pkexec, polkitd, ca-certificates, xdg-utils, curl
 Description: Per-application network controls for COSMIC
  Choose network access, interfaces and SOCKS5 or HTTP(S) proxies for native desktop apps.

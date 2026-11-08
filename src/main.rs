@@ -718,13 +718,16 @@ impl Astroute {
                 if self.settings.opening_release {
                     return Task::none();
                 }
-                if let settings::Update::Available(release) = &self.settings.update {
-                    self.settings.opening_release = true;
-                    self.settings.release_error = None;
-                    return Task::perform(settings::open_release(release.clone()), |result| {
-                        cosmic::Action::App(Message::ReleaseOpened(result))
-                    });
-                }
+                let release = match &self.settings.update {
+                    settings::Update::Available(release) => Some(release.clone()),
+                    settings::Update::Failed(_) => None,
+                    _ => return Task::none(),
+                };
+                self.settings.opening_release = true;
+                self.settings.release_error = None;
+                return Task::perform(settings::open_release(release), |result| {
+                    cosmic::Action::App(Message::ReleaseOpened(result))
+                });
             }
             Message::ReleaseOpened(result) => {
                 self.settings.opening_release = false;
@@ -1868,32 +1871,37 @@ impl Astroute {
                         .control(check),
                 ),
         );
-        match &settings.update {
-            settings::Update::Current => list = list.push(widget::text::body(fl!("up-to-date"))),
-            settings::Update::Available(release) => {
-                let mut open = widget::button::suggested(fl!("open-release"))
-                    .trailing_icon(widget::icon::from_name("external-link-symbolic").handle());
+        let status: Option<Element<'_, Message>> = match &settings.update {
+            settings::Update::Current => Some(widget::text::body(fl!("up-to-date")).into()),
+            settings::Update::Available(release) => Some(
+                widget::text::body(format!("{} {}", fl!("update-available"), release.version))
+                    .into(),
+            ),
+            settings::Update::NoRelease => Some(widget::text::body(fl!("no-release")).into()),
+            settings::Update::Failed(error) => Some(Self::settings_error(error)),
+            settings::Update::Idle | settings::Update::Checking => None,
+        };
+        if let Some(status) = status {
+            let mut row = widget::row::with_capacity(2)
+                .spacing(16)
+                .align_y(Alignment::Center)
+                .push(widget::container(status).width(Length::Fill));
+            let button = match settings.update {
+                settings::Update::Available(_) => {
+                    Some(widget::button::suggested(fl!("open-release")))
+                }
+                settings::Update::Failed(_) => Some(widget::button::standard(fl!("view-releases"))),
+                _ => None,
+            };
+            if let Some(open) = button {
+                let mut open =
+                    open.trailing_icon(widget::icon::from_name("external-link-symbolic").handle());
                 if !settings.opening_release && !self.quit_requested {
                     open = open.on_press(Message::OpenRelease);
                 }
-                list = list.push(
-                    widget::row::with_capacity(2)
-                        .spacing(16)
-                        .align_y(Alignment::Center)
-                        .push(
-                            widget::text::body(format!(
-                                "{} {}",
-                                fl!("update-available"),
-                                release.version
-                            ))
-                            .width(Length::Fill),
-                        )
-                        .push(open),
-                );
+                row = row.push(open);
             }
-            settings::Update::NoRelease => list = list.push(widget::text::body(fl!("no-release"))),
-            settings::Update::Failed(error) => list = list.push(Self::settings_error(error)),
-            settings::Update::Idle | settings::Update::Checking => {}
+            list = list.push(row);
         }
         if let Some(error) = &settings.release_error {
             list = list.push(Self::settings_error(error));

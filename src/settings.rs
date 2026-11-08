@@ -1,10 +1,10 @@
-use reqwest::{Client, StatusCode};
 use semver::Version;
-use serde::Deserialize;
-use std::time::Duration;
+use std::{io, process::Stdio, time::Duration};
+use tokio::{process::Command, time::timeout};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-const RELEASE_API: &str = "https://api.github.com/repos/cosmic-utils/astroute/releases/latest";
+const RELEASES: &str = "https://github.com/cosmic-utils/astroute/releases";
+const LATEST_RELEASE: &str = "https://github.com/cosmic-utils/astroute/releases/latest";
 const RELEASE_BASE: &str = "https://github.com/cosmic-utils/astroute/releases/tag/";
 
 #[derive(Default)]
@@ -35,83 +35,84 @@ pub struct Release {
     tag: String,
 }
 
-#[derive(Deserialize)]
-struct ApiRelease {
-    tag_name: String,
-    draft: bool,
-    prerelease: bool,
-}
-
-fn parse_release(bytes: &[u8]) -> Result<Option<Release>, String> {
-    let release: ApiRelease = serde_json::from_slice(bytes)
-        .map_err(|_| "GitHub returned an invalid release response.".to_owned())?;
-    if release.draft || release.prerelease {
+fn parse_release(location: &str) -> Result<Option<Release>, String> {
+    if location == RELEASES {
         return Ok(None);
     }
-    // Keep the browser destination within this repository's release pages.
-    if release.tag_name.len() > 128
-        || !release
-            .tag_name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b".-+".contains(&byte))
-    {
-        return Err("The latest release has an invalid version tag.".into());
-    }
-    let version = Version::parse(
-        release
-            .tag_name
-            .strip_prefix('v')
-            .unwrap_or(&release.tag_name),
-    )
-    .map_err(|_| "The latest release has an invalid version tag.".to_owned())?;
+    let tag = location
+        .strip_prefix(RELEASE_BASE)
+        .ok_or("GitHub returned an unexpected release address.")?;
+    let version = Version::parse(tag.strip_prefix('v').unwrap_or(tag))
+        .map_err(|_| "The latest release has an invalid version tag.")?;
     if !version.pre.is_empty() {
         return Ok(None);
     }
     Ok(Some(Release {
         version,
-        tag: release.tag_name,
+        tag: tag.to_owned(),
     }))
 }
 
 pub async fn check_update() -> Result<Update, String> {
-    let client = Client::builder()
-        .user_agent(concat!("Astroute/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(15))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|error| error.to_string())?;
-    let mut response = client
-        .get(RELEASE_API)
-        .header("Accept", "application/vnd.github+json")
-        .header("X-GitHub-Api-Version", "2022-11-28")
-        .send()
+    // Use the same release endpoint as the installer. Read the redirect without following it.
+    let mut command = Command::new("curl");
+    command
+        .args([
+            "--disable",
+            "--head",
+            "--silent",
+            "--show-error",
+            "--proto",
+            "=https",
+            "--tlsv1.2",
+            "--connect-timeout",
+            "10",
+            "--max-time",
+            "12",
+            "--retry",
+            "1",
+            "--user-agent",
+            concat!("Astroute/", env!("CARGO_PKG_VERSION")),
+            "--output",
+            "/dev/null",
+            "--write-out",
+            "%{http_code}\n%{redirect_url}",
+            LATEST_RELEASE,
+        ])
+        .stdin(Stdio::null())
+        .kill_on_drop(true);
+    let timed_out = "The update check timed out.";
+    let output = timeout(Duration::from_secs(25), command.output())
         .await
-        .map_err(network_error)?;
-    if response.status() == StatusCode::NOT_FOUND {
-        return Ok(Update::NoRelease);
-    }
-    if response.status() == StatusCode::TOO_MANY_REQUESTS
-        || (response.status() == StatusCode::FORBIDDEN
-            && response
-                .headers()
-                .get("x-ratelimit-remaining")
-                .is_some_and(|value| value == "0"))
-    {
-        return Err("GitHub's request limit was reached. Try again later.".into());
-    }
-    response.error_for_status_ref().map_err(network_error)?;
-    if !response.status().is_success() {
-        return Err(format!("GitHub returned HTTP {}.", response.status()));
-    }
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(network_error)? {
-        if bytes.len() + chunk.len() > 1024 * 1024 {
-            return Err("GitHub returned an oversized release response.".into());
+        .map_err(|_| timed_out)?
+        .map_err(|error| {
+            if error.kind() == io::ErrorKind::NotFound {
+                "Install curl to check for updates.".into()
+            } else {
+                format!("Unable to start the update check: {error}")
+            }
+        })?;
+    if !output.status.success() {
+        if output.status.code() == Some(28) {
+            return Err(timed_out.into());
         }
-        bytes.extend_from_slice(&chunk);
+        let detail = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Unable to reach GitHub. {}", detail.trim())
+            .trim_end()
+            .into());
     }
-    let Some(release) = parse_release(&bytes)? else {
+    let response = std::str::from_utf8(&output.stdout)
+        .map_err(|_| "GitHub returned an invalid release response.")?;
+    let (status, location) = response
+        .split_once('\n')
+        .ok_or("GitHub returned an invalid release response.")?;
+    let release = match status {
+        "301" | "302" | "303" | "307" | "308" => parse_release(location)?,
+        "404" => None,
+        "429" => return Err("GitHub's request limit was reached. Try again later.".into()),
+        _ => return Err(format!("GitHub returned HTTP {status}.")),
+    };
+    let Some(release) = release else {
         return Ok(Update::NoRelease);
     };
     let current = Version::parse(VERSION).map_err(|error| error.to_string())?;
@@ -122,17 +123,13 @@ pub async fn check_update() -> Result<Update, String> {
     }
 }
 
-fn network_error(error: reqwest::Error) -> String {
-    if error.is_timeout() {
-        "The update check timed out. Try again.".into()
-    } else {
-        format!("Unable to check for updates: {error}")
-    }
-}
-
-pub async fn open_release(release: Release) -> Result<(), String> {
+pub async fn open_release(release: Option<Release>) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        open::that_detached(format!("{RELEASE_BASE}{}", release.tag))
+        let url = release.map_or_else(
+            || RELEASES.into(),
+            |release| format!("{RELEASE_BASE}{}", release.tag),
+        );
+        open::that_detached(url)
             .map_err(|error| format!("Unable to open the release page: {error}"))
     })
     .await
@@ -145,18 +142,12 @@ mod tests {
 
     #[test]
     fn release_tags_are_versions_with_safe_destinations() {
-        let parse = |tag: &str| {
-            parse_release(
-                serde_json::json!({
-                    "tag_name": tag, "draft": false, "prerelease": false,
-                })
-                .to_string()
-                .as_bytes(),
-            )
-        };
+        let parse = |tag: &str| parse_release(&format!("{RELEASE_BASE}{tag}"));
         assert!(parse("v0.10.0").unwrap().unwrap().version > Version::new(0, 9, 0));
         assert!(parse("0.2.0").unwrap().is_some());
         assert!(parse("v0.2.0-rc.1").unwrap().is_none());
+        assert!(parse_release(RELEASES).unwrap().is_none());
+        assert!(parse_release("https://github.com/another/project/releases/tag/v9.0.0").is_err());
         for tag in ["../other", "v0.2.0?x=1", "latest", "v0.2.0\n"] {
             assert!(parse(tag).is_err());
         }

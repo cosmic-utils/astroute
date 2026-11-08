@@ -1,6 +1,6 @@
 [package]
 name = "astroute-backend"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "Native networking helper and local settings for Astroute"

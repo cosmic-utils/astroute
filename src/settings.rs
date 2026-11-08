@@ -24,33 +24,24 @@ pub enum Update {
     Idle,
     Checking,
     Current,
-    Available(Release),
+    Available(Version),
     NoRelease,
     Failed(String),
 }
 
-#[derive(Clone, Debug)]
-pub struct Release {
-    pub version: Version,
-    tag: String,
-}
-
-fn parse_release(location: &str) -> Result<Option<Release>, String> {
+fn parse_release(location: &str) -> Result<Option<Version>, String> {
     if location == RELEASES {
         return Ok(None);
     }
     let tag = location
         .strip_prefix(RELEASE_BASE)
         .ok_or("GitHub returned an unexpected release address.")?;
-    let version = Version::parse(tag.strip_prefix('v').unwrap_or(tag))
-        .map_err(|_| "The latest release has an invalid version tag.")?;
-    if !version.pre.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(Release {
-        version,
-        tag: tag.to_owned(),
-    }))
+    let version = tag
+        .strip_prefix('v')
+        .and_then(|number| Version::parse(number).ok())
+        .filter(|version| version.pre.is_empty() && version.build.is_empty())
+        .ok_or("The latest release must use a vX.Y.Z tag.")?;
+    Ok(Some(version))
 }
 
 pub async fn check_update() -> Result<Update, String> {
@@ -61,7 +52,6 @@ pub async fn check_update() -> Result<Update, String> {
             "--disable",
             "--head",
             "--silent",
-            "--show-error",
             "--proto",
             "=https",
             "--tlsv1.2",
@@ -80,6 +70,7 @@ pub async fn check_update() -> Result<Update, String> {
             LATEST_RELEASE,
         ])
         .stdin(Stdio::null())
+        .stderr(Stdio::null())
         .kill_on_drop(true);
     let timed_out = "The update check timed out.";
     let output = timeout(Duration::from_secs(25), command.output())
@@ -93,41 +84,38 @@ pub async fn check_update() -> Result<Update, String> {
             }
         })?;
     if !output.status.success() {
-        if output.status.code() == Some(28) {
-            return Err(timed_out.into());
-        }
-        let detail = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Unable to reach GitHub. {}", detail.trim())
-            .trim_end()
-            .into());
+        return Err(match output.status.code() {
+            Some(28) => timed_out.into(),
+            Some(code) => format!("Unable to reach GitHub (curl error {code})."),
+            None => "The update check was interrupted.".into(),
+        });
     }
     let response = std::str::from_utf8(&output.stdout)
         .map_err(|_| "GitHub returned an invalid release response.")?;
     let (status, location) = response
         .split_once('\n')
         .ok_or("GitHub returned an invalid release response.")?;
-    let release = match status {
+    let version = match status {
         "301" | "302" | "303" | "307" | "308" => parse_release(location)?,
-        "404" => None,
         "429" => return Err("GitHub's request limit was reached. Try again later.".into()),
         _ => return Err(format!("GitHub returned HTTP {status}.")),
     };
-    let Some(release) = release else {
+    let Some(version) = version else {
         return Ok(Update::NoRelease);
     };
     let current = Version::parse(VERSION).map_err(|error| error.to_string())?;
-    if release.version.cmp_precedence(&current).is_gt() {
-        Ok(Update::Available(release))
+    if version.cmp_precedence(&current).is_gt() {
+        Ok(Update::Available(version))
     } else {
         Ok(Update::Current)
     }
 }
 
-pub async fn open_release(release: Option<Release>) -> Result<(), String> {
+pub async fn open_release(version: Option<Version>) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let url = release.map_or_else(
+        let url = version.map_or_else(
             || RELEASES.into(),
-            |release| format!("{RELEASE_BASE}{}", release.tag),
+            |version| format!("{RELEASE_BASE}v{version}"),
         );
         open::that_detached(url)
             .map_err(|error| format!("Unable to open the release page: {error}"))
@@ -143,12 +131,18 @@ mod tests {
     #[test]
     fn release_tags_are_versions_with_safe_destinations() {
         let parse = |tag: &str| parse_release(&format!("{RELEASE_BASE}{tag}"));
-        assert!(parse("v0.10.0").unwrap().unwrap().version > Version::new(0, 9, 0));
-        assert!(parse("0.2.0").unwrap().is_some());
-        assert!(parse("v0.2.0-rc.1").unwrap().is_none());
+        assert!(parse("v0.10.0").unwrap().unwrap() > Version::new(0, 9, 0));
         assert!(parse_release(RELEASES).unwrap().is_none());
         assert!(parse_release("https://github.com/another/project/releases/tag/v9.0.0").is_err());
-        for tag in ["../other", "v0.2.0?x=1", "latest", "v0.2.0\n"] {
+        for tag in [
+            "0.2.0",
+            "v0.2.0-rc.1",
+            "v0.2.0+build",
+            "../other",
+            "v0.2.0?x=1",
+            "latest",
+            "v0.2.0\n",
+        ] {
             assert!(parse(tag).is_err());
         }
     }

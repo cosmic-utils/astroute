@@ -718,14 +718,14 @@ impl Astroute {
                 if self.settings.opening_release {
                     return Task::none();
                 }
-                let release = match &self.settings.update {
-                    settings::Update::Available(release) => Some(release.clone()),
+                let version = match &self.settings.update {
+                    settings::Update::Available(version) => Some(version.clone()),
                     settings::Update::Failed(_) => None,
                     _ => return Task::none(),
                 };
                 self.settings.opening_release = true;
                 self.settings.release_error = None;
-                return Task::perform(settings::open_release(release), |result| {
+                return Task::perform(settings::open_release(version), |result| {
                     cosmic::Action::App(Message::ReleaseOpened(result))
                 });
             }
@@ -1873,10 +1873,9 @@ impl Astroute {
         );
         let status: Option<Element<'_, Message>> = match &settings.update {
             settings::Update::Current => Some(widget::text::body(fl!("up-to-date")).into()),
-            settings::Update::Available(release) => Some(
-                widget::text::body(format!("{} {}", fl!("update-available"), release.version))
-                    .into(),
-            ),
+            settings::Update::Available(version) => {
+                Some(widget::text::body(format!("{} {version}", fl!("update-available"))).into())
+            }
             settings::Update::NoRelease => Some(widget::text::body(fl!("no-release")).into()),
             settings::Update::Failed(error) => Some(Self::settings_error(error)),
             settings::Update::Idle | settings::Update::Checking => None,

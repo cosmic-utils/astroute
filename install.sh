@@ -24,7 +24,7 @@ if [[ $version == latest ]]; then
     release_url=$(fetch --head --output /dev/null --write-out '%{url_effective}' "https://github.com/$repo/releases/latest")
     version=${release_url##*/}
 fi
-[[ $version =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'Select a release such as v0.1.0.'
+[[ $version =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'Select a release tag in vX.Y.Z format.'
 number=${version#v}
 case $format in
     deb) asset="astroute_${number}-1_amd64.deb" ;;
